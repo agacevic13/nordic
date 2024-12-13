@@ -1,0 +1,19 @@
+# CLI COMMANDS:
+
+reset - resets the chip. Sample: "reset"
+start - starts the ble scanner. Sample: "start"
+nwkid - the nwk id that scanner searches for. By default it's 1234 for shell fw. Id length must be 4 at the moment. Sample: "nwkid 2525". 
+freq  - Sets the sensor update frequency, in seconds. Sample: "freq 5"
+hwid  - Updates hardware id used for applying to a response slot. Most useful for testing many response slots with the same scanner. Sample: "hwid"
+
+
+# prj.conf
+CONFIG_LOG=y
+CONFIG_USE_SEGGER_RTT=y
+CONFIG_RTT_CONSOLE=y
+CONFIG_UART_CONSOLE=y
+
+CONFIG_SHELL=y
+CONFIG_SHELL_BACKEND_RTT=n
+CONFIG_SHELL_PROMPT_RTT=""
+CONFIG_SHELL_BACKEND_SERIAL=y
