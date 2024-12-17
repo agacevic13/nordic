@@ -4,17 +4,28 @@
 #include <stdlib.h>
 
 #include <zephyr/logging/log.h>
+#include <gps.h>
 LOG_MODULE_REGISTER(cmds);
+
+extern bool isGpsActive;
 
 static int reset(const struct shell *sh, size_t argc, char **argv) {
 	//sys_reboot(SYS_REBOOT_COLD);
 	return 0;
 }
 
-extern int get_position(void);
 static int get_position_cmd(const struct shell *sh, size_t argc, char **argv) {
 	LOG_INF("requesting a single fix");
-	get_position();
+	LOG_INF("gps Active = %d", isGpsActive);
+	if(isGpsActive == false)
+	{
+		get_position();
+	}
+	else if(isGpsActive == true)
+	{
+		LOG_WRN("GPS already searching!");
+		return 0;
+	}
 	return 0;
 }
 

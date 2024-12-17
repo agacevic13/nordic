@@ -15,4 +15,10 @@ void main(void)
     modem_lib_initialize();
 
     gps_start();
+
+    while(1)
+    {
+        
+        k_msleep(10000);   
+    }
 }

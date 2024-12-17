@@ -13,10 +13,12 @@
 
 LOG_MODULE_REGISTER(gnss_sample, CONFIG_GNSS_SAMPLE_LOG_LEVEL);
 
+bool isGpsActive = true;
 static const char update_indicator[] = {'\\', '|', '/', '-'};
 
 static struct nrf_modem_gnss_pvt_data_frame last_pvt;
-static uint64_t fix_timestamp;
+// static uint64_t fix_timestamp;
+
 
 /* Reference position. */
 static bool ref_used;
@@ -60,7 +62,7 @@ static void print_distance_from_reference(struct nrf_modem_gnss_pvt_data_frame *
 	LOG_INF("\nDistance from reference: %.01f\n", distance);
 }
 
-static void gnss_event_handler(int event)
+void gnss_event_handler(int event)
 {
 	int retval;
 
@@ -70,12 +72,32 @@ static void gnss_event_handler(int event)
 		if (retval == 0) {
 			k_sem_give(&pvt_data_sem);
 		}
-		break;
+		 if (last_pvt.flags & NRF_MODEM_GNSS_PVT_FLAG_FIX_VALID) {
+            isGpsActive = false;
+        }
+        break;
 	case NRF_MODEM_GNSS_EVT_SLEEP_AFTER_TIMEOUT:
-		LOG_WRN("Deadling missed");
+		isGpsActive = false;
+		LOG_INF("gps Active = %d", isGpsActive);
 		k_sem_give(&pvt_data_sem);
+		LOG_INF("line 79");
+		LOG_WRN("Deadling missed");
+		LOG_INF("gps Active = %d", isGpsActive);
+		break;
+	case NRF_MODEM_GNSS_EVT_PERIODIC_WAKEUP:
+		isGpsActive = true;
+		LOG_INF("line 83");
+		LOG_INF("gps Active = %d", isGpsActive);
+		LOG_WRN("GPS searching");
+		break;
+	case NRF_MODEM_GNSS_EVT_SLEEP_AFTER_FIX:
+		isGpsActive = false;
+		k_sem_give(&pvt_data_sem);
+		LOG_INF("line 89");
+		LOG_WRN("GPS sleeping after fix");
 		break;
 	}
+	
 }
 static int periodic_gnss_init(void)
 {
@@ -184,9 +206,8 @@ void modem_lib_initialize(void)
 
 int gps_start(void)
 {
-	int err;
 	uint8_t cnt = 0;
-
+	static uint64_t fix_timestamp;
 	LOG_INF("Starting periodic GNSS sample");
 
 	if (periodic_gnss_init() != 0) 
@@ -194,11 +215,13 @@ int gps_start(void)
 		LOG_ERR("Failed to initialize and start periodic GNSS");
 		return -1;
 	}
-
+	isGpsActive = true;
 	fix_timestamp = k_uptime_get();
-
+	
+	LOG_INF("gps Active = %d", isGpsActive);
 	for (;;) {
 		(void)k_poll(events, 1, K_FOREVER);
+		
 
 		if (events[0].state == K_POLL_STATE_SEM_AVAILABLE &&
 		    k_sem_take(events[0].sem, K_NO_WAIT) == 0) {
@@ -224,13 +247,15 @@ int gps_start(void)
 				fix_timestamp = k_uptime_get();
 				print_fix_data(&last_pvt);
 				print_distance_from_reference(&last_pvt);
+
 			} 
-			else {
+			else 
+			{
 				LOG_INF("Seconds since last periodic fix: %d\n",
 						(uint32_t)((k_uptime_get() - fix_timestamp) / 1000));
 				cnt++;
 				LOG_INF("Searching [%c]\n", update_indicator[cnt%4]);
-			}
+			}	
 		}
 	}
 	return 0;
@@ -287,8 +312,10 @@ static int single_fix_gnss_init_and_start(void)
 int get_position(void)
 {
 	int err; 
+	static uint64_t fix_timestamp;
 	uint8_t cnt = 0;
 	//stop periodic gnss
+	
 	LOG_WRN("Stopping periodic gps");
 	err = nrf_modem_gnss_stop();
 	if (err) 
@@ -296,11 +323,17 @@ int get_position(void)
 		LOG_ERR("Stopping periodic gnss failed, error: %d", err);
 		return err;
 	}
+	k_msleep(3000);
+
+	LOG_INF("initialize single fix");
+	
 	if (single_fix_gnss_init_and_start() != 0) {
 		LOG_ERR("Failed to initialize and start GNSS");
 		return -1;
 	}
-
+	k_msleep(1000);
+	isGpsActive = true;
+	LOG_INF("get to 309");
 	while (1) 
 	{
 		(void)k_poll(events, 1, K_FOREVER);
@@ -328,18 +361,19 @@ int get_position(void)
 
 			if (last_pvt.flags & NRF_MODEM_GNSS_PVT_FLAG_FIX_VALID) 
 			{
+				
 				fix_timestamp = k_uptime_get();
 		
 				print_fix_data(&last_pvt);
 				print_distance_from_reference(&last_pvt);
-				
+
+				LOG_WRN("354 get here");		
 				// k_mutex_lock(&last_pvt_mutex, K_FOREVER);
 				// zbus_chan_pub(&acc_data_channel, &last_pvt, K_SECONDS(1));
 				// k_mutex_unlock(&last_pvt_mutex);
 				
 				break;
 			}
-			
 			else 
 			{
 				LOG_INF("Seconds since last single fix: %d\n",
@@ -347,23 +381,25 @@ int get_position(void)
 				cnt++;
 				LOG_INF("Searching [%c]\n", update_indicator[cnt%4]);
 			}
-
 		}
+		LOG_INF("looping...");
+		 k_msleep(2000);
 	}
-
+	LOG_WRN("get here 372");
 	k_sem_give(&pvt_data_sem);
+	k_msleep(3000);
 	err = nrf_modem_gnss_stop();
 	if (err) {
 		LOG_INF("Failed to stop GNSS, error %d\n",err);
 	}
 	LOG_INF("Stopped single fix GNSS");
-
+	k_msleep(1000);
+	LOG_INF("Starting periodic GNSS");
 	err = gps_start();
 	if(err)
 	{
 		LOG_INF("Failed to initialize periodic GNSS, error: %d\n", err);
 	}
-	LOG_INF("Starting periodic GNSS");
 
 	return 0;
 }
